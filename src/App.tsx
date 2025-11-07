@@ -7,6 +7,7 @@ import Dashboard from './components/Dashboard';
 import Pacientes from './components/Pacientes';
 import FichaPaciente from './components/FichaPaciente';
 import Agenda from './components/Agenda';
+import { ErrorBoundary } from './components/ErrorBoundary';
 
 function MainApp() {
   const { user, loading } = useAuth();
@@ -17,7 +18,10 @@ function MainApp() {
   if (loading) {
     return (
       <div className="min-h-screen bg-white flex items-center justify-center">
-        <p className="text-black">Cargando...</p>
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-black">Cargando...</p>
+        </div>
       </div>
     );
   }
@@ -66,9 +70,11 @@ function MainApp() {
 
 function App() {
   return (
-    <AuthProvider>
-      <MainApp />
-    </AuthProvider>
+    <ErrorBoundary>
+      <AuthProvider>
+        <MainApp />
+      </AuthProvider>
+    </ErrorBoundary>
   );
 }
 
