@@ -1,17 +1,34 @@
 import { useEffect, useState } from 'react';
-import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 
 interface Paciente {
   id: string;
   nombre: string;
   telefono: string;
+  email?: string;
+  fecha_nacimiento?: string;
+  direccion?: string;
+  alergias?: string;
   created_at: string;
 }
 
 interface PacientesProps {
   onSelectPaciente: (id: string) => void;
 }
+
+// Funciones para manejar datos locales
+const getPacientes = (userId: string): Paciente[] => {
+  try {
+    const pacientesStr = localStorage.getItem(`pacientes_${userId}`);
+    return pacientesStr ? JSON.parse(pacientesStr) : [];
+  } catch {
+    return [];
+  }
+};
+
+const savePacientes = (userId: string, pacientes: Paciente[]) => {
+  localStorage.setItem(`pacientes_${userId}`, JSON.stringify(pacientes));
+};
 
 export default function Pacientes({ onSelectPaciente }: PacientesProps) {
   const { user } = useAuth();
@@ -34,20 +51,12 @@ export default function Pacientes({ onSelectPaciente }: PacientesProps) {
     loadPacientes();
   }, [user]);
 
-  const loadPacientes = async () => {
-    try {
-      const { data } = await supabase
-        .from('pacientes')
-        .select('id, nombre, telefono, created_at')
-        .eq('user_id', user?.id)
-        .order('created_at', { ascending: false });
+  const loadPacientes = () => {
+    if (!user) return;
 
-      setPacientes(data || []);
-    } catch (err) {
-      console.error('Error loading patients:', err);
-    } finally {
-      setLoading(false);
-    }
+    const pacientesData = getPacientes(user.id);
+    setPacientes(pacientesData.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()));
+    setLoading(false);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -55,18 +64,23 @@ export default function Pacientes({ onSelectPaciente }: PacientesProps) {
     setError('');
     setSuccess('');
 
+    if (!user) return;
+
     try {
-      const { error: insertError } = await supabase.from('pacientes').insert({
-        user_id: user?.id,
+      const newPaciente: Paciente = {
+        id: `paciente_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
         nombre: formData.nombre,
         telefono: formData.telefono,
-        email: formData.email || null,
-        fecha_nacimiento: formData.fecha_nacimiento || null,
-        direccion: formData.direccion || null,
-        alergias: formData.alergias || null,
-      });
+        email: formData.email || undefined,
+        fecha_nacimiento: formData.fecha_nacimiento || undefined,
+        direccion: formData.direccion || undefined,
+        alergias: formData.alergias || undefined,
+        created_at: new Date().toISOString(),
+      };
 
-      if (insertError) throw insertError;
+      const currentPacientes = getPacientes(user.id);
+      const updatedPacientes = [newPaciente, ...currentPacientes];
+      savePacientes(user.id, updatedPacientes);
 
       setSuccess('Paciente registrado exitosamente');
       setFormData({

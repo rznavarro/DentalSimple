@@ -1,19 +1,35 @@
 import { useEffect, useState } from 'react';
-import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 
 interface Cita {
   id: string;
   fecha: string;
   hora: string;
-  pacientes: {
-    nombre: string;
-  };
+  pacienteNombre: string;
 }
 
 interface DashboardProps {
   onNavigate: (view: string) => void;
 }
+
+// Funciones para manejar datos locales
+const getPacientes = (userId: string) => {
+  try {
+    const pacientesStr = localStorage.getItem(`pacientes_${userId}`);
+    return pacientesStr ? JSON.parse(pacientesStr) : [];
+  } catch {
+    return [];
+  }
+};
+
+const getCitas = (userId: string) => {
+  try {
+    const citasStr = localStorage.getItem(`citas_${userId}`);
+    return citasStr ? JSON.parse(citasStr) : [];
+  } catch {
+    return [];
+  }
+};
 
 export default function Dashboard({ onNavigate }: DashboardProps) {
   const { user } = useAuth();
@@ -26,22 +42,29 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
 
     const loadData = async () => {
       try {
-        const { count } = await supabase
-          .from('pacientes')
-          .select('*', { count: 'exact', head: true })
-          .eq('user_id', user.id);
+        // Cargar pacientes desde localStorage
+        const pacientes = getPacientes(user.id);
+        setTotalPacientes(pacientes.length);
 
-        setTotalPacientes(count || 0);
-
+        // Cargar citas desde localStorage
+        const allCitas = getCitas(user.id);
         const today = new Date().toISOString().split('T')[0];
-        const { data: citas } = await supabase
-          .from('citas')
-          .select('id, fecha, hora, pacientes(nombre)')
-          .eq('user_id', user.id)
-          .eq('fecha', today)
-          .order('hora');
 
-        setCitasHoy(citas || []);
+        // Filtrar citas de hoy y agregar nombre del paciente
+        const citasHoyData = allCitas
+          .filter((cita: any) => cita.fecha === today)
+          .map((cita: any) => {
+            const paciente = pacientes.find((p: any) => p.id === cita.paciente_id);
+            return {
+              id: cita.id,
+              fecha: cita.fecha,
+              hora: cita.hora,
+              pacienteNombre: paciente ? paciente.nombre : 'Paciente no encontrado'
+            };
+          })
+          .sort((a: any, b: any) => a.hora.localeCompare(b.hora));
+
+        setCitasHoy(citasHoyData);
       } catch (err) {
         console.error('Error loading dashboard:', err);
       } finally {
@@ -93,7 +116,7 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
                 {citasHoy.map((cita) => (
                   <tr key={cita.id} className="border-t border-gray-300">
                     <td className="px-4 py-2 text-black">{cita.hora.substring(0, 5)}</td>
-                    <td className="px-4 py-2 text-black">{cita.pacientes.nombre}</td>
+                    <td className="px-4 py-2 text-black">{cita.pacienteNombre}</td>
                   </tr>
                 ))}
               </tbody>

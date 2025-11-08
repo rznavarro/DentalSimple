@@ -16,7 +16,7 @@ export default function Login({ onToggle }: { onToggle: () => void }) {
     try {
       await signIn(email, password);
     } catch (err) {
-      setError('Error al iniciar sesión. Verifica tus credenciales.');
+      setError('Error al iniciar sesión. Verifica tus credenciales o regístrate si no tienes cuenta.');
     } finally {
       setLoading(false);
     }

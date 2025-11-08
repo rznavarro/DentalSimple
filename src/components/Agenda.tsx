@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 
 interface Paciente {
@@ -9,13 +8,35 @@ interface Paciente {
 
 interface Cita {
   id: string;
+  paciente_id: string;
   fecha: string;
   hora: string;
-  motivo: string | null;
-  pacientes: {
-    nombre: string;
-  };
+  motivo?: string;
+  pacienteNombre: string;
 }
+
+// Funciones para manejar datos locales
+const getPacientes = (userId: string): Paciente[] => {
+  try {
+    const pacientesStr = localStorage.getItem(`pacientes_${userId}`);
+    return pacientesStr ? JSON.parse(pacientesStr) : [];
+  } catch {
+    return [];
+  }
+};
+
+const getCitas = (userId: string): Cita[] => {
+  try {
+    const citasStr = localStorage.getItem(`citas_${userId}`);
+    return citasStr ? JSON.parse(citasStr) : [];
+  } catch {
+    return [];
+  }
+};
+
+const saveCitas = (userId: string, citas: Cita[]) => {
+  localStorage.setItem(`citas_${userId}`, JSON.stringify(citas));
+};
 
 export default function Agenda() {
   const { user } = useAuth();
@@ -39,30 +60,31 @@ export default function Agenda() {
     loadData();
   }, [user, currentDate]);
 
-  const loadData = async () => {
-    try {
-      const { data: pacientesData } = await supabase
-        .from('pacientes')
-        .select('id, nombre')
-        .eq('user_id', user?.id)
-        .order('nombre');
+  const loadData = () => {
+    if (!user) return;
 
-      setPacientes(pacientesData || []);
+    try {
+      const pacientesData = getPacientes(user.id);
+      setPacientes(pacientesData.sort((a, b) => a.nombre.localeCompare(b.nombre)));
 
       const year = currentDate.getFullYear();
       const month = currentDate.getMonth();
       const firstDay = new Date(year, month, 1).toISOString().split('T')[0];
       const lastDay = new Date(year, month + 1, 0).toISOString().split('T')[0];
 
-      const { data: citasData } = await supabase
-        .from('citas')
-        .select('id, fecha, hora, motivo, pacientes(nombre)')
-        .eq('user_id', user?.id)
-        .gte('fecha', firstDay)
-        .lte('fecha', lastDay)
-        .order('hora');
+      const allCitas = getCitas(user.id);
+      const citasData = allCitas
+        .filter(cita => cita.fecha >= firstDay && cita.fecha <= lastDay)
+        .map(cita => {
+          const paciente = pacientesData.find(p => p.id === cita.paciente_id);
+          return {
+            ...cita,
+            pacienteNombre: paciente ? paciente.nombre : 'Paciente no encontrado'
+          };
+        })
+        .sort((a, b) => a.hora.localeCompare(b.hora));
 
-      setCitas(citasData || []);
+      setCitas(citasData);
     } catch (err) {
       console.error('Error loading data:', err);
     } finally {
@@ -75,21 +97,24 @@ export default function Agenda() {
     setError('');
     setSuccess('');
 
-    if (!formData.paciente_id) {
+    if (!user || !formData.paciente_id) {
       setError('Selecciona un paciente');
       return;
     }
 
     try {
-      const { error: insertError } = await supabase.from('citas').insert({
-        user_id: user?.id,
+      const newCita: Cita = {
+        id: `cita_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
         paciente_id: formData.paciente_id,
         fecha: formData.fecha,
         hora: formData.hora,
-        motivo: formData.motivo || null,
-      });
+        motivo: formData.motivo || undefined,
+        pacienteNombre: pacientes.find(p => p.id === formData.paciente_id)?.nombre || 'Desconocido',
+      };
 
-      if (insertError) throw insertError;
+      const currentCitas = getCitas(user.id);
+      const updatedCitas = [...currentCitas, newCita];
+      saveCitas(user.id, updatedCitas);
 
       setSuccess('Cita agendada exitosamente');
       setFormData({
@@ -298,7 +323,7 @@ export default function Agenda() {
                   <div key={cita.id} className="border border-gray-300 p-4">
                     <div className="flex justify-between">
                       <div>
-                        <p className="font-medium text-black">{cita.pacientes.nombre}</p>
+                        <p className="font-medium text-black">{cita.pacienteNombre}</p>
                         <p className="text-sm text-gray-600">
                           {cita.hora.substring(0, 5)}
                           {cita.motivo && ` - ${cita.motivo}`}

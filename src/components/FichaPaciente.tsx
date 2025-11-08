@@ -1,29 +1,56 @@
 import { useEffect, useState } from 'react';
-import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 
 interface Paciente {
   id: string;
   nombre: string;
   telefono: string;
-  email: string | null;
-  fecha_nacimiento: string | null;
-  direccion: string | null;
-  alergias: string | null;
+  email?: string;
+  fecha_nacimiento?: string;
+  direccion?: string;
+  alergias?: string;
 }
 
 interface Visita {
   id: string;
+  paciente_id: string;
   fecha: string;
   tratamiento: string;
-  observaciones: string | null;
-  costo: number | null;
+  observaciones?: string;
+  costo?: number;
 }
 
 interface FichaPacienteProps {
   pacienteId: string;
   onBack: () => void;
 }
+
+// Funciones para manejar datos locales
+const getPacientes = (userId: string): Paciente[] => {
+  try {
+    const pacientesStr = localStorage.getItem(`pacientes_${userId}`);
+    return pacientesStr ? JSON.parse(pacientesStr) : [];
+  } catch {
+    return [];
+  }
+};
+
+const savePacientes = (userId: string, pacientes: Paciente[]) => {
+  localStorage.setItem(`pacientes_${userId}`, JSON.stringify(pacientes));
+};
+
+const getVisitas = (userId: string): Visita[] => {
+  try {
+    const visitasStr = localStorage.getItem(`visitas_${userId}`);
+    return visitasStr ? JSON.parse(visitasStr) : [];
+  } catch {
+    return [];
+  }
+};
+
+const saveVisitas = (userId: string, visitas: Visita[]) => {
+  localStorage.setItem(`visitas_${userId}`, JSON.stringify(visitas));
+};
 
 export default function FichaPaciente({ pacienteId, onBack }: FichaPacienteProps) {
   const { user } = useAuth();
@@ -54,14 +81,13 @@ export default function FichaPaciente({ pacienteId, onBack }: FichaPacienteProps
     loadData();
   }, [user, pacienteId]);
 
-  const loadData = async () => {
+  const loadData = () => {
+    if (!user) return;
+
     try {
-      const { data: pacienteData } = await supabase
-        .from('pacientes')
-        .select('*')
-        .eq('id', pacienteId)
-        .eq('user_id', user?.id)
-        .single();
+      // Buscar paciente
+      const pacientes = getPacientes(user.id);
+      const pacienteData = pacientes.find(p => p.id === pacienteId);
 
       if (pacienteData) {
         setPaciente(pacienteData);
@@ -75,14 +101,13 @@ export default function FichaPaciente({ pacienteId, onBack }: FichaPacienteProps
         });
       }
 
-      const { data: visitasData } = await supabase
-        .from('visitas')
-        .select('*')
-        .eq('paciente_id', pacienteId)
-        .eq('user_id', user?.id)
-        .order('fecha', { ascending: false });
+      // Cargar visitas del paciente
+      const allVisitas = getVisitas(user.id);
+      const pacienteVisitas = allVisitas
+        .filter(v => v.paciente_id === pacienteId)
+        .sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime());
 
-      setVisitas(visitasData || []);
+      setVisitas(pacienteVisitas);
     } catch (err) {
       console.error('Error loading data:', err);
     } finally {
@@ -95,17 +120,21 @@ export default function FichaPaciente({ pacienteId, onBack }: FichaPacienteProps
     setError('');
     setSuccess('');
 
+    if (!user) return;
+
     try {
-      const { error: insertError } = await supabase.from('visitas').insert({
+      const newVisita: Visita = {
+        id: `visita_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
         paciente_id: pacienteId,
-        user_id: user?.id,
         fecha: formData.fecha,
         tratamiento: formData.tratamiento,
-        observaciones: formData.observaciones || null,
-        costo: formData.costo ? parseFloat(formData.costo) : null,
-      });
+        observaciones: formData.observaciones || undefined,
+        costo: formData.costo ? parseFloat(formData.costo) : undefined,
+      };
 
-      if (insertError) throw insertError;
+      const currentVisitas = getVisitas(user.id);
+      const updatedVisitas = [newVisita, ...currentVisitas];
+      saveVisitas(user.id, updatedVisitas);
 
       setSuccess('Visita registrada exitosamente');
       setFormData({
@@ -126,21 +155,24 @@ export default function FichaPaciente({ pacienteId, onBack }: FichaPacienteProps
     setError('');
     setSuccess('');
 
-    try {
-      const { error: updateError } = await supabase
-        .from('pacientes')
-        .update({
-          nombre: editData.nombre,
-          telefono: editData.telefono,
-          email: editData.email || null,
-          fecha_nacimiento: editData.fecha_nacimiento || null,
-          direccion: editData.direccion || null,
-          alergias: editData.alergias || null,
-        })
-        .eq('id', pacienteId)
-        .eq('user_id', user?.id);
+    if (!user) return;
 
-      if (updateError) throw updateError;
+    try {
+      const updatedPaciente: Paciente = {
+        id: pacienteId,
+        nombre: editData.nombre,
+        telefono: editData.telefono,
+        email: editData.email || undefined,
+        fecha_nacimiento: editData.fecha_nacimiento || undefined,
+        direccion: editData.direccion || undefined,
+        alergias: editData.alergias || undefined,
+      };
+
+      const currentPacientes = getPacientes(user.id);
+      const updatedPacientes = currentPacientes.map(p =>
+        p.id === pacienteId ? updatedPaciente : p
+      );
+      savePacientes(user.id, updatedPacientes);
 
       setSuccess('Datos actualizados exitosamente');
       setEditMode(false);

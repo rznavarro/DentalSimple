@@ -17,7 +17,7 @@ export default function Register({ onToggle }: { onToggle: () => void }) {
     try {
       await signUp(email, password, clinicName);
     } catch (err) {
-      setError('Error al registrarse. Intenta con otro email.');
+      setError('Error al registrarse. Intenta con otro email o continúa sin conexión.');
     } finally {
       setLoading(false);
     }
